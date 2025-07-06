@@ -1,0 +1,11 @@
+name: cesm-streamlit
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - streamlit
+  - xarray
+  - netcdf4
+  - matplotlib
+  - numpy
+
