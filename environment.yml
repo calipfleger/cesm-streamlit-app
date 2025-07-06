@@ -1,11 +1,6 @@
 name: cesm-streamlit
 channels:
-  - conda-forge
+  - defaults
 dependencies:
-  - python=3.11
-  - streamlit
-  - xarray
-  - netcdf4
-  - matplotlib
-  - numpy
-
+  - python=3.10
+prefix: /Users/calipfleger/opt/anaconda3/envs/cesm-streamlit
