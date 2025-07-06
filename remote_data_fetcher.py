@@ -1,52 +1,22 @@
-import os
-import subprocess
-import xarray as xr
 import streamlit as st
-
-def fetch_remote_netcdf(user, host, remote_path, local_dir="data"):
-    """
-    Download a NetCDF file from a remote HPC or server via SCP.
-    """
-    os.makedirs(local_dir, exist_ok=True)
-    filename = os.path.basename(remote_path)
-    local_path = os.path.join(local_dir, filename)
-
-    st.info(f"Fetching {filename} from {host}...")
-    try:
-        subprocess.run(["scp", f"{user}@{host}:{remote_path}", local_path], check=True)
-        st.success(f"Downloaded to {local_path}")
-        return local_path
-    except subprocess.CalledProcessError as e:
-        st.error(f"Failed to fetch file: {e}")
-        return None
-
-def clean_netcdf(file_path):
-    """
-    Load and clean a NetCDF file using xarray.
-    """
-    try:
-        ds = xr.open_dataset(file_path)
-        ds = ds.drop_vars([v for v in ds.data_vars if ds[v].isnull().all()], errors='ignore')
-        ds = ds.squeeze(drop=True)
-        return ds
-    except Exception as e:
-        st.error(f"Error cleaning file: {e}")
-        return None
+import os
+import urllib.request
+from pathlib import Path
 
 def remote_fetch_workflow():
-    st.sidebar.markdown("### 🔗 Fetch Remote NetCDF File")
-    with st.sidebar.form("remote_fetch"):
-        user = st.text_input("SSH Username", "your_username")
-        host = st.text_input("SSH Host", "remote.cluster.edu")
-        path = st.text_input("Remote NetCDF Path", "/path/to/file.nc")
-        submit = st.form_submit_button("Fetch")
+    st.sidebar.markdown("### 🌐 Download NetCDF from Remote Path")
 
-    if submit:
-        fetched_path = fetch_remote_netcdf(user, host, path)
-        if fetched_path:
-            cleaned_ds = clean_netcdf(fetched_path)
-            if cleaned_ds:
-                st.session_state["remote_dataset"] = cleaned_ds
-                st.session_state["remote_path"] = fetched_path
-                st.success("Remote dataset loaded and cleaned!")
+    remote_url = st.sidebar.text_input("Enter remote HTTP or HTTPS NetCDF URL:")
+    
+    if remote_url:
+        filename = remote_url.split("/")[-1]
+        target_path = os.path.join("data", filename)
+        
+        if st.sidebar.button("Download and Save"):
+            try:
+                Path("data").mkdir(parents=True, exist_ok=True)
+                urllib.request.urlretrieve(remote_url, target_path)
+                st.sidebar.success(f"✅ Downloaded and saved to `{target_path}`")
+            except Exception as e:
+                st.sidebar.error(f"❌ Failed to download: {e}")
 
