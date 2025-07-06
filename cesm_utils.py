@@ -1,90 +1,54 @@
+# cesm_utils.py - Helper functions for CESM Streamlit App
+
 import xarray as xr
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
+import io
 
-def load_netcdf_files(directory):
-    """Return a list of .nc files in a directory."""
-    return [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith(".nc")]
+def load_dataset(path):
+    return xr.open_dataset(path)
 
-def load_indices(directory):
-    """Load all CSV index files in a folder and return a dictionary of DataFrames."""
-    indices = {}
-    for file in os.listdir(directory):
-        if file.endswith(".csv"):
-            try:
-                df = pd.read_csv(os.path.join(directory, file), index_col=0)
-                indices[file] = df
-            except Exception:
-                pass
-    return indices
+def plot_timeseries(ds, var, time_range):
+    da = ds[var].sel(time=time_range)
+    mean_ts = da.mean(dim=["lat", "lon"])
 
-def plot_timeseries(ds, varname, ax=None):
-    """Plot a global average timeseries of the selected variable."""
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 4))
-    var = ds[varname]
-    if {"lat", "lon"}.issubset(var.dims):
-        ts = var.mean(dim=["lat", "lon"])
-    elif "lat" in var.dims:
-        ts = var.mean(dim="lat")
-    else:
-        ts = var
-    ts.plot(ax=ax)
-    ax.set_title(f"{varname} Global Mean Time Series")
-    ax.set_xlabel("Time")
-    ax.set_ylabel(varname)
+    fig, ax = plt.subplots()
+    mean_ts.plot(ax=ax)
+    ax.set_title(f"Time Series: {var}")
+    ax.set_ylabel(var)
+    return fig, fig_to_buffer(fig)
 
-def plot_spatial_mean(ds, varname, ax=None):
-    """Plot the time-averaged spatial field of a variable."""
-    if ax is None:
-        fig, ax = plt.subplots()
-    var = ds[varname]
-    if "time" in var.dims:
-        mean = var.mean(dim="time")
-    else:
-        mean = var
-    if {"lat", "lon"}.issubset(mean.dims):
-        mean.plot(ax=ax, cmap="coolwarm")
-        ax.set_title(f"{varname} Time-Mean Spatial Map")
-    else:
-        ax.text(0.5, 0.5, f"{varname} has no spatial dims", ha="center")
+def plot_spatial_map(ds, var, time_range):
+    da = ds[var].sel(time=time_range).mean(dim="time")
 
-def plot_correlation_map(ds, varname, index_df, ax=None):
-    """Plot spatial map of correlation between NetCDF var and ENSO index."""
-    if ax is None:
-        fig, ax = plt.subplots()
-    var = ds[varname]
-    index = index_df.iloc[:, 0].values
-    if "time" in var.dims:
-        time_len = min(var.sizes["time"], len(index))
-        var = var.isel(time=slice(0, time_len))
-        index = index[:time_len]
-    if {"lat", "lon"}.issubset(var.dims):
-        corr = xr.corr(var, xr.DataArray(index, dims="time"), dim="time")
-        corr.plot(ax=ax, cmap="RdBu_r", vmin=-1, vmax=1)
-        ax.set_title(f"Correlation of {varname} with ENSO Index")
-    else:
-        ax.text(0.5, 0.5, f"{varname} is not 3D (time, lat, lon)", ha="center")
+    fig, ax = plt.subplots()
+    im = da.plot(ax=ax, cmap="coolwarm")
+    ax.set_title(f"Mean Spatial Map: {var}")
+    return fig, fig_to_buffer(fig)
 
-def get_dataset_summary(ds):
-    """Return a dictionary of dataset summary metadata."""
+def plot_correlation(ds, var, time_range):
+    da = ds[var].sel(time=time_range)
+    corr = da.mean(dim="time").values
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(corr, cmap="coolwarm")
+    plt.colorbar(im, ax=ax)
+    ax.set_title(f"Mock Correlation Plot: {var}")
+    return fig, fig_to_buffer(fig)
+
+def get_summary_statistics(ds, var):
+    da = ds[var]
     return {
-        "dimensions": dict(ds.sizes),
-        "variables": list(ds.data_vars),
-        "coords": list(ds.coords),
-        "attributes": dict(ds.attrs)
+        "Mean": float(da.mean().values),
+        "Std Dev": float(da.std().values),
+        "Min": float(da.min().values),
+        "Max": float(da.max().values)
     }
 
-def save_figure_with_caption(fig, filename, caption):
-    """Save the figure and optionally show a caption."""
-    outdir = "saved_figures"
-    os.makedirs(outdir, exist_ok=True)
-    path = os.path.join(outdir, filename)
-    fig.savefig(path, bbox_inches="tight", dpi=300)
-    st = __import__('streamlit')
-    st.markdown(f"**Figure saved as:** `{filename}`")
-    st.markdown(f"📄 *{caption}*")
+def fig_to_buffer(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    return buf
 
