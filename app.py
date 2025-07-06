@@ -2,118 +2,76 @@ import streamlit as st
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
-import cartopy.crs as ccrs
-import io
+import os
 
-st.set_page_config(layout="wide")
-st.title("iCESM Volcanic Sensitivity Visualization App")
+# Clear title
+st.title('CESM Data Visualization Workbook')
 
-st.markdown("""
-Upload your iCESM NetCDF climate model output (e.g. precipitation, δ¹⁸O, ENSO indices) and compare different volcanic eruption scenarios.
-""")
+# Step 1: Generate Dummy NetCDF if not present
+data_dir = 'data/'
+os.makedirs(data_dir, exist_ok=True)
+dummy_file = os.path.join(data_dir, 'dummy_dataset.nc')
 
-# --- Sidebar: File upload and controls ---
-with st.sidebar:
-    st.header("1. Upload Model Data")
-    nc_file = st.file_uploader("Upload NetCDF file (.nc)", type=["nc"])
-    
-    st.header("2. (Optional) Upload Proxy Data")
-    proxy_file = st.file_uploader("Upload Proxy CSV (year,value)", type=["csv"])
-
-    st.header("3. Visualization Controls")
-    year_range = st.slider("Year Range After Eruption", 0, 10, (0, 5))
-    region = st.selectbox(
-        "Region for Timeseries (for regional analysis)",
-        options=["Global", "El Niño 3.4 (Pacific)", "Australia (NW, KNI-51 region)"]
+if not os.path.exists(dummy_file):
+    time = np.arange(0, 100)
+    data = np.sin(time / 10) + np.random.normal(0, 0.2, size=time.size)
+    dummy_ds = xr.Dataset(
+        {'dummy_var': ('time', data)},
+        coords={'time': time},
+        attrs={'description': 'Dummy CESM data for testing', 'units': 'arbitrary'}
     )
+    dummy_ds.to_netcdf(dummy_file)
 
-    st.header("4. Help")
-    st.markdown("**Sample dataset:** [Download test NetCDF](https://github.com/ai-cecs/cesm-streamlit-app/raw/main/testdata/test_icesm.nc)  \n"
-                "Sample proxy: [Download proxy CSV](https://github.com/ai-cecs/cesm-streamlit-app/raw/main/testdata/kni51_proxy.csv)")
+# Step 2: Dataset Selection
+st.sidebar.header("Select Dataset")
+files = [f for f in os.listdir(data_dir) if f.endswith('.nc')]
 
-# --- Load Model Data ---
-if nc_file:
-    with st.spinner("Loading NetCDF file..."):
-        ds = xr.open_dataset(nc_file)
-        st.success(f"Loaded dataset with variables: {list(ds.variables)}")
-else:
-    st.warning("Please upload a NetCDF file to begin.")
-    st.stop()
+selected_file = st.sidebar.selectbox("Choose NetCDF file:", files)
+data_path = os.path.join(data_dir, selected_file)
 
-# --- Variable Selection ---
-var_choices = [v for v in ds.data_vars if ds[v].ndim >= 1]
-varname = st.selectbox("Climate Variable to Visualize", var_choices)
-data = ds[varname]
+# Step 3: Load Dataset and Metadata
+ds = xr.open_dataset(data_path)
+variables = list(ds.data_vars)
 
-# --- Time selection ---
-if "year" in ds.coords:
-    years = ds["year"].values
-elif "time" in ds.coords:
-    years = ds["time"].dt.year.values
-else:
-    st.error("No year or time coordinate found!")
-    st.stop()
-eruption_year = years[0]  # Assume first year is eruption year for this demo
-year_sel = (years >= (eruption_year + year_range[0])) & (years <= (eruption_year + year_range[1]))
-year_index = np.where(year_sel)[0]
+# Step 4: Variable Selection
+selected_var = st.sidebar.selectbox("Choose variable:", variables)
 
-# --- Map Visualization ---
-if data.ndim >= 3 and {"lat", "lon"}.issubset(data.dims):
-    st.subheader("Spatial Map: Mean Response After Eruption")
-    mean_map = data.isel(time=year_index).mean(dim="time")
-    fig = plt.figure(figsize=(9, 5))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    im = ax.pcolormesh(ds["lon"], ds["lat"], mean_map.squeeze(), cmap='BrBG', shading='auto')
-    ax.coastlines()
-    plt.colorbar(im, ax=ax, shrink=0.5, label=f"Mean {varname}")
-    st.pyplot(fig)
+# Automatic metadata extraction
+metadata = {
+    'variables': list(ds.data_vars),
+    'dimensions': dict(ds.dims),
+    'attributes': ds.attrs,
+}
 
-# --- ENSO Timeseries (Nino3.4) ---
-if "nino34" in ds.data_vars:
-    st.subheader("ENSO Timeseries (Nino3.4)")
-    nino = ds["nino34"]
-    fig, ax = plt.subplots(figsize=(7, 3))
-    ax.plot(years, nino, marker='o')
-    ax.axvline(eruption_year, color='red', linestyle='--', label="Eruption")
-    ax.set_xlabel("Year")
-    ax.set_ylabel("Nino3.4 Index")
-    ax.legend()
-    st.pyplot(fig)
-
-# --- Regional Timeseries ---
-st.subheader("Regional Timeseries")
-if region == "Global":
-    ts = data.mean(dim=[d for d in data.dims if d in ["lat", "lon"]])
-elif region == "El Niño 3.4 (Pacific)":
-    mask = ((ds['lat'] >= -5) & (ds['lat'] <= 5) & (ds['lon'] >= 190) & (ds['lon'] <= 240))
-    ts = data.where(mask).mean(dim=["lat", "lon"])
-elif region == "Australia (NW, KNI-51 region)":
-    mask = ((ds["lat"] >= -20) & (ds["lat"] <= -10) & (ds["lon"] >= 120) & (ds["lon"] <= 130))
-    ts = data.where(mask).mean(dim=["lat", "lon"])
-else:
-    ts = data.mean(dim=[d for d in data.dims if d in ["lat", "lon"]])
-
-fig, ax = plt.subplots(figsize=(7, 3))
-ax.plot(years, ts, label="Model")
-ax.axvline(eruption_year, color='red', linestyle='--', label="Eruption Year")
-ax.set_xlabel("Year")
-ax.set_ylabel(f"{varname}")
-ax.legend()
-
-# Overlay proxy, if available
-if proxy_file:
-    pdf = pd.read_csv(proxy_file)
-    ax.plot(pdf['year'], pdf['value'], marker='o', color='black', label="Proxy")
-    ax.legend()
+# Step 5: Visualization
+fig, ax = plt.subplots(figsize=(10, 5))
+ds[selected_var].plot(ax=ax)
+ax.set_title(f"{selected_var} from {selected_file}")
 st.pyplot(fig)
 
-# --- Download Processed Data ---
-st.subheader("Download Processed Timeseries")
-outdf = pd.DataFrame({"year": years, "model": ts.values})
-if proxy_file:
-    outdf["proxy"] = np.interp(years, pdf['year'], pdf['value'])
-st.download_button("Download as CSV", outdf.to_csv(index=False), file_name="processed_timeseries.csv")
+# Step 6: Automatic Caption Generation (Modular)
+def generate_caption(metadata, dataset_name, variable_name):
+    caption = (
+        f"Figure: {variable_name} from CESM dataset '{dataset_name}'. "
+        f"Dataset includes variables {metadata['variables']} with dimensions {metadata['dimensions']}. "
+        f"Global attributes: {metadata['attributes']}."
+    )
+    return caption
 
-# --- Metadata Display ---
-st.expander("Raw Dataset Metadata").write(ds)
+caption = generate_caption(metadata, selected_file, selected_var)
+st.markdown(f"**Caption:** {caption}")
+
+# Step 7: Save Figure & Caption
+save_dir = 'saved_figures'
+os.makedirs(save_dir, exist_ok=True)
+
+if st.button("Save Visualization"):
+    fig_filename = f"{save_dir}/{selected_var}_{selected_file.replace('.nc', '')}.png"
+    fig.savefig(fig_filename, bbox_inches='tight')
+
+    caption_filename = fig_filename.replace('.png', '_caption.txt')
+    with open(caption_filename, 'w') as f:
+        f.write(caption)
+
+    st.success(f"Figure and caption saved as {fig_filename} and {caption_filename}")
+
