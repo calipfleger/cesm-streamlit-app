@@ -1,29 +1,30 @@
 import xarray as xr
 import numpy as np
+import pandas as pd
 import os
 
-os.makedirs("data", exist_ok=True)
+def create_dummy_dataset(path="data/dummy.nc"):
+    """Creates a synthetic NetCDF dataset for testing and plotting."""
+    times = pd.date_range("2000-01-01", periods=100, freq="M")
+    lats = np.linspace(-30, 30, 10)
+    lons = np.linspace(120, 280, 20)
+    temp_data = 15 + 8 * np.random.randn(len(times), len(lats), len(lons))
 
-times = np.arange(1850, 2006)
-lats = np.linspace(-90, 90, 36)
-lons = np.linspace(0, 360, 72)
+    ds = xr.Dataset(
+        {
+            "tas": (
+                ("time", "lat", "lon"),
+                temp_data,
+                {"units": "degC", "description": "Synthetic surface air temperature"},
+            )
+        },
+        coords={"time": times, "lat": lats, "lon": lons},
+    )
 
-data = np.random.rand(len(times), len(lats), len(lons))
+    os.makedirs("data", exist_ok=True)
+    ds.to_netcdf(path)
+    print(f"Dummy NetCDF file created at: {path}")
 
-ds = xr.Dataset(
-    {
-        "d18Op": (["time", "lat", "lon"], data)
-    },
-    coords={
-        "time": times,
-        "lat": lats,
-        "lon": lons
-    }
-)
-
-ds["d18Op"].attrs["units"] = "per mil"
-ds["d18Op"].attrs["description"] = "Oxygen isotope ratio in precipitation"
-
-ds.to_netcdf("data/test_icesm.nc")
-print("Dummy NetCDF file created at data/test_icesm.nc")
+if __name__ == "__main__":
+    create_dummy_dataset()
 

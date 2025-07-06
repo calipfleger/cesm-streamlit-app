@@ -2,6 +2,21 @@ import xarray as xr
 import pandas as pd
 import numpy as np
 
+
+import xarray as xr
+
+def load_cesm_data(file):
+    """Load CESM NetCDF file (uploaded or local path) into xarray.Dataset."""
+    if hasattr(file, "read"):  # uploaded file-like object
+        return xr.open_dataset(file)
+    else:  # local file path
+        return xr.open_dataset(str(file))
+
+def get_variable(ds, varname):
+    """Return a specific variable from the dataset."""
+    return ds[varname]
+
+
 def load_dataset(path):
     """Load NetCDF dataset from path."""
     return xr.open_dataset(path)
