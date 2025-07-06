@@ -1,4 +1,12 @@
-__pycache__/
+nano .gitignore__pycache__/
+*.pyc
+data/
+!data/sample.nc
+.venv/
+venv/
+.env
+.DS_Store
+.streamlit/__pycache__/
 *.pyc
 data/
 .venv/
