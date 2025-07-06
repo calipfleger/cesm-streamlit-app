@@ -1,22 +1,29 @@
 import xarray as xr
 import numpy as np
-years = np.arange(1810, 1820)
-lat = np.linspace(-30, 30, 24)
-lon = np.linspace(110, 260, 40)
-data = np.random.randn(len(years), len(lat), len(lon))
-d18op = np.random.randn(len(years), len(lat), len(lon)) * 0.5
-nino34 = np.random.randn(len(years))
+import os
+
+os.makedirs("data", exist_ok=True)
+
+times = np.arange(1850, 2006)
+lats = np.linspace(-90, 90, 36)
+lons = np.linspace(0, 360, 72)
+
+data = np.random.rand(len(times), len(lats), len(lons))
 
 ds = xr.Dataset(
     {
-        "precip": (["time", "lat", "lon"], data),
-        "d18op": (["time", "lat", "lon"], d18op),
-        "nino34": (["time"], nino34),
+        "d18Op": (["time", "lat", "lon"], data)
     },
     coords={
-        "time": years,
-        "lat": lat,
-        "lon": lon,
+        "time": times,
+        "lat": lats,
+        "lon": lons
     }
 )
-ds.to_netcdf("test_icesm.nc")
+
+ds["d18Op"].attrs["units"] = "per mil"
+ds["d18Op"].attrs["description"] = "Oxygen isotope ratio in precipitation"
+
+ds.to_netcdf("data/test_icesm.nc")
+print("Dummy NetCDF file created at data/test_icesm.nc")
+
