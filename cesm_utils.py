@@ -263,4 +263,3 @@ def plot_trend_map(ds, var, t_slice, preset, cmap, indices, boxes, cbar_mode, vm
     fig.text(0.5, -0.08, caption, ha="center", va="top", fontsize=preset["font_size"], wrap=True)
     fig.tight_layout(rect=(0, 0.05, 1, 1))
     return fig, _fig_buf(fig, preset["dpi"]), caption
-
