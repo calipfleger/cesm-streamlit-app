@@ -2,7 +2,7 @@
 """
 CESM Analysis Utilities - Complete Version
 """
-
+import cftime
 import io
 import numpy as np
 import xarray as xr
@@ -90,7 +90,7 @@ def compute_index(ds: xr.Dataset, var: str, name: str, boxes: dict) -> xr.DataAr
     if name == "Raw":
         return da
     if name == "Global Mean":
-        if {"lat", "lon"}.issubset(da.dims):
+        if {"lat", "lon"}.issubset(da.coords):
             return _area_mean(da, (-90, 90), (0, 360))
         return da.mean()
     if name in boxes:
@@ -141,6 +141,7 @@ def plot_timeseries(
     with _journal_style(preset):
         fig, ax = plt.subplots(figsize=preset["figure_size"])
         
+        stats = []
         for idx_name in indices:
             da = compute_index(ds, var, idx_name, boxes).sel(time=time_slice)
             if len(da.dims) > 1:
@@ -154,12 +155,13 @@ def plot_timeseries(
                 coeffs = np.polyfit(x, y, 1)
                 trend = np.poly1d(coeffs)(x)
                 ax.plot(da.time, trend, '--', color=line[0].get_color(), lw=1)
+                stats.append(f"{idx_name} trend: {coeffs[0]:.2e} per unit time")
         
         ax.set_title(f"{var} Time Series\n{time_slice.start} to {time_slice.stop}")
         ax.legend(fontsize=preset["font_size"]-1)
         ax.grid(True, ls=':', alpha=0.5)
         
-        return fig, _fig_buf(fig, preset["dpi"]), caption or ""
+        return fig, _fig_buf(fig, preset["dpi"]), "\n".join(stats)
 
 def plot_spatial_map(
     ds: xr.Dataset,
@@ -169,9 +171,6 @@ def plot_spatial_map(
     cmap: str,
     indices: List[str],
     boxes: dict,
-    cbar_mode: str = "auto",
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
     show_boxes: bool = True,
     user_caption: Optional[str] = None
 ) -> Tuple[plt.Figure, io.BytesIO, str]:
@@ -188,21 +187,16 @@ def plot_spatial_map(
         else:
             fig, ax = plt.subplots(figsize=preset["figure_size"])
         
-        # Plot the data
         im = da.plot(
             ax=ax,
             cmap=cmap,
             add_colorbar=False,
-            vmin=vmin,
-            vmax=vmax,
-            **({"robust": True} if cbar_mode == "robust" else {})
+            robust=True
         )
         
-        # Add colorbar
         cbar = plt.colorbar(im, ax=ax, orientation='vertical', pad=0.02)
         cbar.set_label(f"{var} [{da.attrs.get('units', '')}]")
         
-        # Add boxes if requested
         if show_boxes:
             for idx_name in indices:
                 if idx_name in boxes:
@@ -220,5 +214,57 @@ def plot_spatial_map(
         caption = f"Spatial mean of {var} ({time_slice.start} to {time_slice.stop})"
         if user_caption:
             caption += f" | {user_caption}"
+            
+        return fig, _fig_buf(fig, preset["dpi"]), caption
+
+def plot_trend_map(
+    ds: xr.Dataset,
+    var: str,
+    time_slice: slice,
+    preset: dict,
+    cmap: str,
+    indices: List[str],
+    boxes: dict,
+    show_boxes: bool = True
+) -> Tuple[plt.Figure, io.BytesIO, str]:
+    """Generate trend map plot"""
+    with _journal_style(preset):
+        # Calculate trend over time
+        trend_data = ds[var].sel(time=time_slice).polyfit("time", 1)
+        trend_slope = trend_data["polyfit_coefficients"].sel(degree=1)
+        
+        if HAS_CARTOPY:
+            fig = plt.figure(figsize=preset["figure_size"])
+            ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
+            ax.add_feature(cfeature.LAND, facecolor=preset["map"]["land_color"])
+            ax.add_feature(cfeature.OCEAN, facecolor=preset["map"]["ocean_color"])
+            ax.coastlines(**preset["map"]["coastline"])
+        else:
+            fig, ax = plt.subplots(figsize=preset["figure_size"])
+        
+        im = trend_slope.plot(
+            ax=ax,
+            cmap=cmap,
+            add_colorbar=False
+        )
+        
+        cbar = plt.colorbar(im, ax=ax, orientation='vertical', pad=0.02)
+        cbar.set_label(f"{var} trend [{ds[var].attrs.get('units', '')}/time]")
+        
+        if show_boxes:
+            for idx_name in indices:
+                if idx_name in boxes:
+                    box = boxes[idx_name]
+                    lat, lon = box["lat"], box["lon"]
+                    ax.plot(
+                        [lon[0], lon[1], lon[1], lon[0], lon[0]],
+                        [lat[0], lat[0], lat[1], lat[1], lat[0]],
+                        'k--', linewidth=1
+                    )
+        
+        title = f"{var} Trend\n{time_slice.start} to {time_slice.stop}"
+        ax.set_title(title)
+        
+        caption = f"Trend of {var} ({time_slice.start} to {time_slice.stop})"
             
         return fig, _fig_buf(fig, preset["dpi"]), caption
