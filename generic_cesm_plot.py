@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import List, Tuple
 import matplotlib.pyplot as plt
 
-from cesm_utils import (               # ← already in your repo
+from cesm_utils import (
     JOURNAL_PRESETS,
     BUILTIN_BOXES,
     load_dataset,
@@ -67,8 +67,8 @@ def make_figs(
     t_slice = slice(ds["time"].values[0], ds["time"].values[-1])
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
-    # 1️⃣  Time-series
-    fig, _, _ = plot_timeseries(ds, var, idx, t_slice, preset, boxes, show_trendline=trend)
+    # 1️⃣  Time-series - Fixed parameter name
+    fig, _, _ = plot_timeseries(ds, var, idx, t_slice, preset, boxes, trendline=trend)
     ts_path = Path(outdir) / "timeseries.png"
     fig.savefig(ts_path, dpi=preset["dpi"], bbox_inches="tight")
     plt.close(fig)
