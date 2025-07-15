@@ -1,161 +1,166 @@
-# -*- coding: utf-8 -*-
-"""
-CESM Streamlit App - Complete cftime Solution
-"""
+# ---- app.py ----
+from __future__ import annotations
 
 import os
 import streamlit as st
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
-import cftime
+
 from cesm_utils import (
-    load_dataset,
     JOURNAL_PRESETS,
     BUILTIN_BOXES,
     DIFF_BOXES,
+    load_dataset,
     plot_timeseries,
     plot_spatial_map,
     plot_trend_map,
-    compute_index
+    list_index_info,
+    format_citation,
+    save_citations,
 )
 
-# App configuration
-st.set_page_config(
-    page_title="🌍 CESM Analysis Toolkit",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# ── Streamlit page config ────────────────────────────────────────────────────
+st.set_page_config(page_title="CESM Workbook", layout="wide")
+st.title("CESM / iCESM Interactive Workbook")
 
-def handle_cesm_time(ds):
-    """Robust time handling for CESM data with cftime support"""
-    if isinstance(ds.time.values[0], cftime.datetime):
-        # Convert cftime to pandas datetime for display
-        time_values = ds.time.values
-        time_display = pd.to_datetime([f"{t.year}-{t.month:02d}-{t.day:02d}" 
-                                     for t in time_values])
-        
-        def get_slice(start_dt, end_dt):
-            # Convert back to cftime for selection
-            start_cf = cftime.DatetimeNoLeap(start_dt.year, start_dt.month, start_dt.day)
-            end_cf = cftime.DatetimeNoLeap(end_dt.year, end_dt.month, end_dt.day)
-            return ds.time.sel(time=slice(start_cf, end_cf))
-            
-        return time_display, get_slice
-    else:
-        # Regular datetime handling
-        time_values = pd.to_datetime(ds.time.values)
-        def get_slice(start_dt, end_dt):
-            return ds.time.sel(time=slice(start_dt, end_dt))
-        return time_values, get_slice
-
-# Data loading
+# ── Dataset picker ───────────────────────────────────────────────────────────
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
+files = [f for f in os.listdir(DATA_DIR) if f.endswith(".nc")]
 
-@st.cache_data(show_spinner="Loading dataset...")
-def cached_load(path: str):
-    """Cached dataset loader"""
+if not files:
+    st.error("No NetCDF files in ./data")
+    st.stop()
+
+file_path = os.path.join(DATA_DIR, st.sidebar.selectbox("Dataset", files))
+
+
+@st.cache_data(show_spinner=True)
+def _load(path):
     return load_dataset(path)
 
-# Sidebar controls
-with st.sidebar:
-    st.header("Data Selection")
-    data_files = [f for f in os.listdir(DATA_DIR) if f.endswith(('.nc', '.nc4'))]
-    if not data_files:
-        st.error("No NetCDF files found in data directory")
-        st.stop()
-    
-    selected_file = st.selectbox("Select NetCDF File", data_files)
-    try:
-        ds = cached_load(os.path.join(DATA_DIR, selected_file))
-        time_display, get_slice = handle_cesm_time(ds)
-        
-        selected_start, selected_end = st.select_slider(
-            "Select Time Period",
-            options=time_display,
-            value=(time_display[0], time_display[-1]),
-            format="YYYY-MM-DD"
-        )
-        time_slice = get_slice(selected_start, selected_end)
-        
-    except Exception as e:
-        st.error(f"Error loading dataset: {str(e)}")
-        st.stop()
-    
-    st.header("Variable Selection")
-    available_vars = list(ds.data_vars)
-    variable = st.selectbox("Select Variable", available_vars)
 
-    st.header("Visualization Settings")
-    journal_style = st.selectbox("Journal Style", list(JOURNAL_PRESETS.keys()))
-    preset = JOURNAL_PRESETS[journal_style]
-    
-    colormap = st.selectbox(
-        "Colormap", 
-        sorted(plt.colormaps()),
-        index=sorted(plt.colormaps()).index("viridis"))
-    show_boxes = st.checkbox("Show Region Boxes", True)
+ds = _load(file_path)
 
-# Main tabs
-tab1, tab2, tab3 = st.tabs(["📈 Time Series", "🗺 Spatial Maps", "📊 Trend Analysis"])
+# ── Sidebar controls ────────────────────────────────────────────────────────
+var = st.sidebar.selectbox("Variable", list(ds.data_vars))
 
-with tab1:
-    st.header(f"Time Series: {variable}")
-    selected_indices = st.multiselect(
-        "Select Indices",
-        ["Raw", "Global Mean"] + list(BUILTIN_BOXES.keys()),
-        default=["Raw"])
-    show_trend = st.checkbox("Show Trend Line", True)
-    
-    if selected_indices:
-        fig, buf, stats = plot_timeseries(
-            ds,
-            variable,
-            selected_indices,
-            time_slice,
-            preset,
-            {**BUILTIN_BOXES, **DIFF_BOXES},
-            show_trend=show_trend)
-        st.pyplot(fig)
-        st.download_button(
-            "Download Figure",
-            buf,
-            file_name=f"{variable}_timeseries.png",
-            mime="image/png")
+BOXES = {**BUILTIN_BOXES, **DIFF_BOXES}
+index_options = ["Raw", "Global Mean"] + list(BOXES.keys())
+indices = st.sidebar.multiselect("Indices", index_options, default=["Raw"])
 
-with tab2:
-    st.header(f"Spatial Maps: {variable}")
+trendline = st.sidebar.checkbox("Add trendline", True)
+
+cmap = st.sidebar.selectbox("Colormap", sorted(plt.colormaps()))
+cbar_mode = st.sidebar.radio("Color-bar mode", ["Auto", "Robust", "Symmetric", "Manual"])
+vmin = vmax = None
+if cbar_mode == "Manual":
+    vmin = st.sidebar.number_input("vmin")
+    vmax = st.sidebar.number_input("vmax")
+
+show_boxes = st.sidebar.checkbox("Show index boxes", True)
+custom_caption = st.sidebar.text_area("Custom caption")
+
+journal = st.sidebar.selectbox("Journal preset", list(JOURNAL_PRESETS.keys()))
+preset = JOURNAL_PRESETS[journal]
+
+citation_style = st.sidebar.selectbox("Citation style", ["Nature", "Science", "AGU", "APA"])
+
+# Time slider
+time_vals = ds["time"].values
+lo, hi = st.sidebar.slider("Time slice", 0, len(time_vals) - 1, (0, len(time_vals) - 1))
+time_slice = slice(time_vals[lo], time_vals[hi])
+
+# ── Tabs ─────────────────────────────────────────────────────────────────────
+tab_ts, tab_map, tab_trend, tab_about = st.tabs(
+    ["📈 Time-Series", "🗺 Spatial Map", "🔭 Trend Map", "📚 About Indices"]
+)
+
+with tab_ts:
+    fig, buf, cap = plot_timeseries(
+        ds,
+        var,
+        indices,
+        time_slice,
+        preset,
+        BOXES,
+        custom_caption,
+        trendline,
+    )
+    st.pyplot(fig)
+    st.download_button("PNG", buf, file_name="timeseries.png")
+    st.caption(cap)
+
+with tab_map:
     fig, buf, cap = plot_spatial_map(
         ds,
-        variable,
+        var,
         time_slice,
         preset,
-        colormap,
-        selected_indices if 'selected_indices' in locals() else ["Raw"],
-        {**BUILTIN_BOXES, **DIFF_BOXES},
-        show_boxes=show_boxes)
+        cmap,
+        indices,
+        BOXES,
+        cbar_mode,
+        vmin,
+        vmax,
+        show_boxes,
+        user_caption=custom_caption,
+    )
     st.pyplot(fig)
-    st.download_button(
-        "Download Map",
-        buf,
-        file_name=f"{variable}_spatial_map.png",
-        mime="image/png")
+    st.download_button("PNG", buf, file_name="spatial_mean.png")
+    st.caption(cap)
 
-with tab3:
-    st.header(f"Trend Analysis: {variable}")
+with tab_trend:
     fig, buf, cap = plot_trend_map(
         ds,
-        variable,
+        var,
         time_slice,
         preset,
-        colormap,
-        selected_indices if 'selected_indices' in locals() else ["Raw"],
-        {**BUILTIN_BOXES, **DIFF_BOXES},
-        show_boxes=show_boxes)
+        cmap,
+        indices,
+        BOXES,
+        cbar_mode,
+        vmin,
+        vmax,
+        show_boxes,
+        user_caption=custom_caption,
+    )
     st.pyplot(fig)
-    st.download_button(
-        "Download Trend Map",
-        buf,
-        file_name=f"{variable}_trend_map.png",
-        mime="image/png")
+    st.download_button("PNG", buf, file_name="trend_map.png")
+    st.caption(cap)
+
+# ── About / citations tab ────────────────────────────────────────────────────
+with tab_about:
+    st.markdown("## Index definitions & references")
+    for name, meta in list_index_info().items():
+        ref = format_citation(citation_style, meta)
+        st.markdown(
+            f"### {name}\n"
+            f"{meta.get('desc', '')}\n\n"
+            f"**Reference** ({citation_style}): {ref}"
+        )
+
+    st.markdown("---")
+    st.markdown("### Add / edit citation (persists to YAML)")
+    key = st.text_input("Index key")
+    col1, col2 = st.columns(2)
+    authors = col1.text_input("Authors")
+    year = col2.number_input("Year", min_value=1900, max_value=2100, value=2025, step=1)
+    title = st.text_input("Paper title")
+    journal_name = st.text_input("Journal")
+    doi = st.text_input("DOI or URL")
+    desc = st.text_area("Short description")
+
+    if st.button("Save citation") and key:
+        from cesm_utils import INDEX_INFO
+
+        INDEX_INFO[key] = {
+            "authors": authors,
+            "year": year,
+            "title": title,
+            "journal": journal_name,
+            "doi": doi,
+            "desc": desc,
+        }
+        save_citations()
+        st.success(f"{key} saved. Reload the page to see it in the list.")
+
