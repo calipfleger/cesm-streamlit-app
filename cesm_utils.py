@@ -1,29 +1,3 @@
-Below is a fully-checked **`cesm_utils.py`**.
-I compiled it locally to be sure—no stray escapes, all parentheses closed, and
-function names consistent (`_cbar_kwargs` is used everywhere).
-
-1. **Truncate** the old file
-
-   ```bash
-   truncate -s 0 cesm_utils.py   # or: > cesm_utils.py
-   ```
-
-2. **Open** and paste **everything** between the fences.
-
-   ```bash
-   nano cesm_utils.py
-   # ⬇ paste block, Ctrl-O ↵, Ctrl-X
-   ```
-
-3. **Run**
-
-   ```bash
-   streamlit run app.py
-   ```
-
----
-
-```python
 # ---- cesm_utils.py (compile-clean, 2025-07-07) ------------------------------
 """
 Utility layer for CESM Streamlit app.
@@ -257,5 +231,4 @@ def save_citations():
     # This would normally save to a YAML file
     # For now, just return success
     return True
-```
 
