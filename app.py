@@ -67,7 +67,7 @@ citation_style = st.sidebar.selectbox("Citation style", ["Nature", "Science", "A
 
 # Time slider
 time_vals = ds["time"].values
-lo, hi = st.sidebar.slider("Time slice", 0, len(time_vals) - 1, (0, len(time_vals) - 1), format="")
+lo, hi = st.sidebar.slider("Time slice", 0, len(time_vals) - 1, (0, len(time_vals) - 1))
 time_slice = slice(time_vals[lo], time_vals[hi])
 
 # ── Tabs ─────────────────────────────────────────────────────────────────────

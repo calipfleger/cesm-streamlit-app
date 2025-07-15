@@ -191,6 +191,71 @@ def plot_trend_map(ds,var,ts,p,cmap,idx,boxes,cmode,vmin,vmax,show,user_caption=
     cap = f"Trend of **{var}** ({units}/t) {str(ts.start)[:10]}–{str(ts.stop)[:10]}."
     if user_caption: cap += " " + user_caption
     fig.text(.5,-.08,cap,ha="center",va="top",fontsize=p["font_size"],wrap=True); fig.tight_layout(rect=(0,.05,1,1))
-    return fig, _fig_buf
+    return fig, _fig_buf(fig, p["dpi"]), cap
+
+# ─── Citation and index info functions ──────────────────────────────────────
+INDEX_INFO = {
+    "Nino1+2": {
+        "authors": "Trenberth, K.E.",
+        "year": 1997,
+        "title": "The Definition of El Niño",
+        "journal": "Bulletin of the American Meteorological Society",
+        "doi": "10.1175/1520-0477(1997)078<2771:TDOENO>2.0.CO;2",
+        "desc": "Sea surface temperature anomaly in the eastern Pacific (0°-10°S, 90°W-80°W)"
+    },
+    "Nino3": {
+        "authors": "Trenberth, K.E.",
+        "year": 1997,
+        "title": "The Definition of El Niño",
+        "journal": "Bulletin of the American Meteorological Society", 
+        "doi": "10.1175/1520-0477(1997)078<2771:TDOENO>2.0.CO;2",
+        "desc": "Sea surface temperature anomaly in the central Pacific (5°S-5°N, 150°W-90°W)"
+    },
+    "Nino3.4": {
+        "authors": "Trenberth, K.E.",
+        "year": 1997,
+        "title": "The Definition of El Niño",
+        "journal": "Bulletin of the American Meteorological Society",
+        "doi": "10.1175/1520-0477(1997)078<2771:TDOENO>2.0.CO;2", 
+        "desc": "Sea surface temperature anomaly in the central-eastern Pacific (5°S-5°N, 170°W-120°W)"
+    },
+    "Nino4": {
+        "authors": "Trenberth, K.E.",
+        "year": 1997,
+        "title": "The Definition of El Niño",
+        "journal": "Bulletin of the American Meteorological Society",
+        "doi": "10.1175/1520-0477(1997)078<2771:TDOENO>2.0.CO;2",
+        "desc": "Sea surface temperature anomaly in the western Pacific (5°S-5°N, 160°E-150°W)"
+    }
+}
+
+def list_index_info():
+    """Return dictionary of index information and citations."""
+    return INDEX_INFO
+
+def format_citation(style, meta):
+    """Format citation in specified style."""
+    authors = meta.get("authors", "")
+    year = meta.get("year", "")
+    title = meta.get("title", "")
+    journal = meta.get("journal", "")
+    doi = meta.get("doi", "")
+    
+    if style == "Nature":
+        return f"{authors} {title}. {journal} ({year}). {doi}"
+    elif style == "Science":
+        return f"{authors}, {title}. {journal} {year}. {doi}"
+    elif style == "AGU":
+        return f"{authors} ({year}), {title}, {journal}, {doi}"
+    elif style == "APA":
+        return f"{authors} ({year}). {title}. {journal}. {doi}"
+    else:
+        return f"{authors} ({year}). {title}. {journal}. {doi}"
+
+def save_citations():
+    """Save citations to file (placeholder function)."""
+    # This would normally save to a YAML file
+    # For now, just return success
+    return True
 ```
 
